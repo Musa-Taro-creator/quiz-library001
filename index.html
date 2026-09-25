@@ -9437,6 +9437,28 @@ html,body{overscroll-behavior-y:none}
 .qz-exam-shell.qz-theme-liquidvivid .qz-run-menu-btn:hover{background:rgba(255,255,255,.22);border-color:#fff;color:#fff}
 .qz-exam-shell.qz-theme-liquidvivid .qz-run-badge{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.3)}
 
+/* Independent side-by-side scrolling (editor + exam, iPad/desktop widths).
+   The page box itself no longer scrolls: the left and right sides are two
+   SIBLING scroll areas, each exactly one screen tall. Scrolling one never
+   moves the other, and on iPad both can be dragged at the same time with
+   two fingers (nested scrollers can't do that -- the inner one fights the
+   outer one). qzMainScroller() in the script finds the right-hand area so
+   the save bar, toolbar auto-hide and question windowing follow it.
+   Phones keep the old single-column page scroll. */
+@media(min-width:701px){
+  .qz-page-overlay.qz-fullscreen .qz-page-box:has(> .qz-q9-shell){height:100vh!important;height:100dvh!important;overflow:hidden!important;padding:0}
+  .qz-q9-shell{height:100%;min-height:0}
+  .qz-q9-rail{position:relative;top:auto;height:100%}
+  .qz-q9-content{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+}
+@media(min-width:761px){
+  .qz-page-overlay.qz-fullscreen .qz-page-box:has(> .qz-exam-shell){height:100vh!important;height:100dvh!important;overflow:hidden!important;padding:0}
+  .qz-exam-shell{height:100%;min-height:0}
+  .qz-exam-body{flex:1 1 auto;min-height:0}
+  .qz-exam-main{align-self:stretch;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  .qz-exam-sidebar{position:relative;top:auto;max-height:100%}
+}
+
 </style>
 
 
@@ -9950,6 +9972,17 @@ html,body{overscroll-behavior-y:none}
     el.classList.add("show");
     el.classList.toggle("qz-fullscreen",!!fullscreen);
   }
+  /* The element that actually scrolls the main (right-hand) content: on
+     iPad/desktop widths the editor's .qz-q9-content or the exam's
+     .qz-exam-main is its own scroll area beside the left side (see the
+     "Independent side-by-side scrolling" CSS); on phones it's still the
+     whole #qzPageBody. */
+  function qzMainScroller(){
+    const body=document.getElementById("qzPageBody");
+    if(!body)return null;
+    const inner=body.querySelector(":scope > .qz-q9-shell > .qz-q9-content, :scope > .qz-exam-shell > .qz-exam-body > .qz-exam-main");
+    return inner&&getComputedStyle(inner).overflowY==="auto"?inner:body;
+  }
   /* iPad fix: the editor's left button rail and right question list are two
      independent scroll areas side by side. On iOS Safari, flinging one of
      them and then immediately touching the other — before the first one has
@@ -9971,6 +10004,9 @@ html,body{overscroll-behavior-y:none}
     if(!bodyEl||bodyEl.dataset.qzScrollHandoffWired)return;
     bodyEl.dataset.qzScrollHandoffWired="1";
     const handoff=e=>{
+      /* Side-by-side layout: the two sides are sibling scroll areas that
+         must keep scrolling at the same time, so never stop the other one. */
+      if(qzMainScroller()!==bodyEl)return;
       const rail=bodyEl.querySelector(".qz-q9-rail-scroll");
       if(!rail)return;
       if(e.target.closest(".qz-q9-rail-scroll"))qzKillMomentum(bodyEl);
@@ -10003,6 +10039,7 @@ html,body{overscroll-behavior-y:none}
     if(!bodyEl||bodyEl.dataset.qzExamScrollHandoffWired)return;
     bodyEl.dataset.qzExamScrollHandoffWired="1";
     const handoff=e=>{
+      if(qzMainScroller()!==bodyEl)return; /* side-by-side: see editor handoff */
       const sidebar=bodyEl.querySelector(".qz-exam-sidebar");
       if(!sidebar)return;
       if(e.target.closest(".qz-exam-sidebar"))qzKillMomentum(bodyEl);
@@ -10026,16 +10063,18 @@ html,body{overscroll-behavior-y:none}
        direction, per Kuza's separate "pin this, scroll can't affect it"
        request for that bar. */
     let qzToolbarLastY=bodyEl.scrollTop;
-    bodyEl.addEventListener("scroll",()=>{
+    bodyEl.addEventListener("scroll",e=>{
+      const scroller=qzMainScroller();
+      if(e.target!==scroller)return;
       const toolbar=bodyEl.querySelector(".qz-vert-toolbar");
-      if(!toolbar){qzToolbarLastY=bodyEl.scrollTop;return}
-      const y=bodyEl.scrollTop;
+      if(!toolbar){qzToolbarLastY=scroller.scrollTop;return}
+      const y=scroller.scrollTop;
       const delta=y-qzToolbarLastY;
       if(y<80)toolbar.classList.remove("qz-toolbar-hidden");
       else if(delta>4)toolbar.classList.add("qz-toolbar-hidden");
       else if(delta<-4)toolbar.classList.remove("qz-toolbar-hidden");
       qzToolbarLastY=y;
-    },{passive:true});
+    },{passive:true,capture:true});
   }
   function qzStopTimer(){if(qzTimerHandle){clearInterval(qzTimerHandle);qzTimerHandle=null}}
   function qzClosePage(){
@@ -12487,7 +12526,7 @@ Q5 Answer B
         if((window.performance?performance.now():Date.now())<qzSuppressAutoWindowUntil)return;
         const wrap=document.getElementById("qzQuestionsList");
         if(!wrap||questions.length<=QZ_VIRTUALIZE_THRESHOLD)return;
-        const scroller=document.getElementById("qzPageBody");
+        const scroller=qzMainScroller();
         if(!scroller)return;
         const slot=Math.max(40,qzEstSlotHeight);
         const listTopWithinScroller=wrap.getBoundingClientRect().top-scroller.getBoundingClientRect().top+scroller.scrollTop;
@@ -12941,7 +12980,7 @@ Q5 Answer B
      repeated editor open/close cycles. */
   let qzSaveBarLastY=0,qzSaveBarTicking=false;
   function qzSaveBarScrollY(){
-    const bodyEl=document.getElementById("qzPageBody");
+    const bodyEl=qzMainScroller();
     return (bodyEl&&bodyEl.scrollTop)||window.scrollY||document.documentElement.scrollTop||0;
   }
   /* Round 5 note 8: the bar must never hide while the admin is mid-action —
@@ -12950,7 +12989,7 @@ Q5 Answer B
      the very top or bottom of the list, not just near the top. */
   function qzSaveBarShouldForceShow(){
     if(document.querySelector(".qz-subdialog-overlay.show, #modalOverlay.show, .menu.open"))return true;
-    const el=document.getElementById("qzPageBody");
+    const el=qzMainScroller();
     if(el&&el.scrollHeight>el.clientHeight+4)return el.scrollHeight-el.scrollTop-el.clientHeight<48;
     const doc=document.documentElement;
     return (window.innerHeight+window.scrollY)>=doc.scrollHeight-48;
