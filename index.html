@@ -2662,6 +2662,19 @@ label:has(#libPublic){display:none!important}
     aspect-ratio:1415 / 864!important;
   }
 }
+/* Short wide screens (iPad landscape, small laptops): center the card
+   vertically instead of pinning it to the top. margin:auto centers it
+   when it fits and falls back to top-aligned + scrollable when it doesn't,
+   so nothing is ever cut off. */
+@media (min-width:901px) and (max-height:840px){
+  #studentAccessGate.ql-auth-active .ql-auth-shell{
+    min-height:calc(100dvh - 20px)!important;
+    padding:0!important;
+  }
+  #studentAccessGate.ql-auth-active .ql-auth-card{
+    margin:auto!important;
+  }
+}
 </style>
 
 
